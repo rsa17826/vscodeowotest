@@ -145,6 +145,7 @@ export function activate(context: vscode.ExtensionContext) {
   const owoDecorationType =
     vscode.window.createTextEditorDecorationType({
       textDecoration: "none; opacity: 0;", // Makes original char invisible but keeps its width
+      color: "var(--vscode-editor-foreground)",
       // textDecoration: 'none; display: none;',
     })
 
@@ -187,7 +188,7 @@ export function activate(context: vscode.ExtensionContext) {
 
           const startPos = editor.document.positionAt(wordOffset + i)
 
-          // 2. SMART REPLACE: Check if the characters after these are the same
+          // 2. SMART REPLACE: Check if the characters before these are the same
           // If original[i+1] matches transformed[j+1], it's a 1-to-1 swap (like l -> w)
           if (
             oldChar &&
@@ -200,10 +201,10 @@ export function activate(context: vscode.ExtensionContext) {
             decorations.push({
               range: new vscode.Range(startPos, endPos),
               renderOptions: {
-                after: {
+                before: {
                   contentText: newChar,
                   color: "inherit",
-                  textDecoration: `none; position: absolute; width: 1ch; translate: -1ch 0;`,
+                  textDecoration: `none; position: absolute; width: 1ch; translate: 0ch 0;`,
                 },
               },
             })
@@ -216,7 +217,7 @@ export function activate(context: vscode.ExtensionContext) {
             decorations.push({
               range: new vscode.Range(startPos, startPos), // Point range = no transparency
               renderOptions: {
-                after: {
+                before: {
                   contentText: newChar,
                   color: "inherit",
                   textDecoration: `none; position: relative; display: inline-block; width: 1ch;`,
@@ -244,12 +245,12 @@ export function activate(context: vscode.ExtensionContext) {
               decorations.push({
                 range: new vscode.Range(startPos, endPos),
                 renderOptions: {
-                  after: {
+                  before: {
                     contentText: newChar || "",
                     color: "inherit",
                     textDecoration:
                       oldChar ?
-                        `none; position: absolute; width: 1ch; translate: -1ch 0;`
+                        `none; position: absolute; width: 1ch; translate: 0ch 0;`
                       : `none; position: relative;`,
                   },
                 },
