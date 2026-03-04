@@ -142,60 +142,148 @@ function reg(
 // Your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
   // 1. Create ONE decoration type and REUSE it.
-  const owoDecorationType = vscode.window.createTextEditorDecorationType({
-      textDecoration: 'none; font-size: 0.001px;', // Collapses original text without losing cursor
-      color: 'transparent',
-  });
+  const owoDecorationType =
+    vscode.window.createTextEditorDecorationType({
+      textDecoration: "none; opacity: 0;", // Makes original char invisible but keeps its width
+      // textDecoration: 'none; display: none;',
+    })
 
   function updateDecorations() {
-      const editor = vscode.window.activeTextEditor;
-      if (!editor) return;
+    const editor = vscode.window.activeTextEditor
+    if (!editor) return
 
-      const text = editor.document.getText();
-      const wordRegex = /\b\w+\b/g;
-      const decorations: vscode.DecorationOptions[] = [];
+    const text = editor.document.getText()
+    const wordRegex = /\b\w+\b/g
+    const decorations: vscode.DecorationOptions[] = []
 
-      let match;
-      while ((match = wordRegex.exec(text))) {
-          const original = match[0];
-          const transformed = owowify(original);
+    let match
+    while ((match = wordRegex.exec(text))) {
+      const original = match[0]
+      const transformed = owowify(original)
+      const wordOffset = match.index
 
-          if (transformed !== original) {
-              const startPos = editor.document.positionAt(match.index);
-              const endPos = editor.document.positionAt(match.index + original.length);
+      if (transformed !== original) {
+        // Diffing logic: compare char by char
+        const maxLength = Math.max(
+          original.length,
+          transformed.length,
+        )
 
-              decorations.push({
-                  range: new vscode.Range(startPos, endPos),
-                  renderOptions: {
-                      before: {
-                          contentText: transformed,
-                          color: 'inherit', // Matches your theme color
-                          fontStyle: 'normal',
-                          fontWeight: 'normal',
-                          textDecoration: 'none; font-size: 100%;', // Restores size for the fake text
-                      }
-                  }
-              });
+        // Inside your while loop comparing original vs transformed:
+        // Initial pointers for original (i) and transformed (j)
+        for (
+          let i = 0, j = 0;
+          i < original.length || j < transformed.length;
+        ) {
+          const oldChar = original[i]
+          const newChar = transformed[j]
+
+          // 1. PERFECT MATCH: No decoration needed
+          if (oldChar === newChar) {
+            i++
+            j++
+            continue
           }
-      }
 
-      // 2. This is the key: setDecorations updates everything in one frame.
-      // No clearing first = no flickering.
-      editor.setDecorations(owoDecorationType, decorations);
+          const startPos = editor.document.positionAt(wordOffset + i)
+
+          // 2. SMART REPLACE: Check if the characters after these are the same
+          // If original[i+1] matches transformed[j+1], it's a 1-to-1 swap (like l -> w)
+          if (
+            oldChar &&
+            newChar &&
+            original[i + 1] === transformed[j + 1]
+          ) {
+            const endPos = editor.document.positionAt(
+              wordOffset + i + 1,
+            )
+            decorations.push({
+              range: new vscode.Range(startPos, endPos),
+              renderOptions: {
+                after: {
+                  contentText: newChar,
+                  color: "inherit",
+                  textDecoration: `none; position: absolute; width: 1ch; translate: -1ch 0;`,
+                },
+              },
+            })
+            i++
+            j++
+          }
+          // 3. SMART INSERT: If the oldChar matches the *next* newChar, we inserted something
+          // Example: null -> nyull. original[1] is 'u', transformed[2] is 'u'.
+          else if (newChar && oldChar === transformed[j + 1]) {
+            decorations.push({
+              range: new vscode.Range(startPos, startPos), // Point range = no transparency
+              renderOptions: {
+                after: {
+                  contentText: newChar,
+                  color: "inherit",
+                  textDecoration: `none; position: relative; display: inline-block; width: 1ch;`,
+                },
+              },
+            })
+            j++ // Move transformed pointer only
+          }
+          // 4. SMART DELETE: If newChar matches the *next* oldChar, we removed something
+          else if (oldChar && original[i + 1] === newChar) {
+            const endPos = editor.document.positionAt(
+              wordOffset + i + 1,
+            )
+            decorations.push({
+              range: new vscode.Range(startPos, endPos),
+            }) // Just hide it
+            i++ // Move original pointer only
+          }
+          // 5. FALLBACK: If nothing matches ahead, assume 1-to-1 replacement
+          else {
+            if (oldChar || newChar) {
+              const endPos = editor.document.positionAt(
+                wordOffset + (oldChar ? i + 1 : i),
+              )
+              decorations.push({
+                range: new vscode.Range(startPos, endPos),
+                renderOptions: {
+                  after: {
+                    contentText: newChar || "",
+                    color: "inherit",
+                    textDecoration:
+                      oldChar ?
+                        `none; position: absolute; width: 1ch; translate: -1ch 0;`
+                      : `none; position: relative;`,
+                  },
+                },
+              })
+            }
+            if (oldChar) i++
+            if (newChar) j++
+          }
+        }
+      }
+    }
+    editor.setDecorations(owoDecorationType, decorations)
   }
 
   // --- Listeners with Debounce ---
-  let timeout: NodeJS.Timeout | undefined;
+  let timeout: NodeJS.Timeout | undefined
   function trigger() {
-      if (timeout) clearTimeout(timeout);
-      timeout = setTimeout(updateDecorations, 50);
+    if (timeout) clearTimeout(timeout)
+    timeout = setTimeout(updateDecorations, 50)
   }
 
-  vscode.workspace.onDidChangeTextDocument(trigger, null, context.subscriptions);
-  vscode.window.onDidChangeActiveTextEditor(trigger, null, context.subscriptions);
-  
+  vscode.workspace.onDidChangeTextDocument(
+    updateDecorations,
+    null,
+    context.subscriptions,
+  )
+  vscode.window.onDidChangeActiveTextEditor(
+    updateDecorations,
+    null,
+    context.subscriptions,
+  )
+
   // Initial call
-  trigger();
+  updateDecorations()
 }
 
 // This method is called when your extension is deactivated
