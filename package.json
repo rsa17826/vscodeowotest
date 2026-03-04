@@ -1,8 +1,8 @@
 {
-  "name": "ttt",
-  "displayName": "ttt",
+  "name": "owoify-editor",
+  "displayName": "owoify editor",
   "description": "",
-  "version": "0.0.1",
+  "version": "1",
   "engines": {
     "vscode": "^1.109.0"
   },
@@ -13,14 +13,6 @@
     "*"
   ],
   "main": "./out/extension.js",
-  "contributes": {
-    "commands": [
-      {
-        "command": "ttt.helloWorld",
-        "title": "Hello World"
-      }
-    ]
-  },
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
