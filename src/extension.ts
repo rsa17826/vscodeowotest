@@ -165,10 +165,11 @@ export function activate(context: vscode.ExtensionContext) {
 
       if (transformed !== original) {
         // Diffing logic: compare char by char
-        const maxLength = Math.max(
-          original.length,
-          transformed.length,
-        )
+        // TODO unused vars show old and new chars
+        // const maxLength = Math.max(
+        //   original.length,
+        //   transformed.length,
+        // )
 
         // Inside your while loop comparing original vs transformed:
         // Initial pointers for original (i) and transformed (j)
