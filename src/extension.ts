@@ -144,7 +144,7 @@ export function activate(context: vscode.ExtensionContext) {
   // 1. Create ONE decoration type and REUSE it.
   const owoDecorationType =
     vscode.window.createTextEditorDecorationType({
-      textDecoration: "none; opacity: 0;", // Makes original char invisible but keeps its width
+      textDecoration: "none; opacity: 0 !important; visibility: hidden;", // Makes original char invisible but keeps its width
       color: "var(--vscode-editor-foreground)",
       // textDecoration: 'none; display: none;',
     })
@@ -165,12 +165,6 @@ export function activate(context: vscode.ExtensionContext) {
 
       if (transformed !== original) {
         // Diffing logic: compare char by char
-        // TODO unused vars show old and new chars
-        // const maxLength = Math.max(
-        //   original.length,
-        //   transformed.length,
-        // )
-
         // Inside your while loop comparing original vs transformed:
         // Initial pointers for original (i) and transformed (j)
         for (
@@ -264,13 +258,6 @@ export function activate(context: vscode.ExtensionContext) {
       }
     }
     editor.setDecorations(owoDecorationType, decorations)
-  }
-
-  // --- Listeners with Debounce ---
-  let timeout: NodeJS.Timeout | undefined
-  function trigger() {
-    if (timeout) clearTimeout(timeout)
-    timeout = setTimeout(updateDecorations, 50)
   }
 
   vscode.workspace.onDidChangeTextDocument(
