@@ -152,62 +152,6 @@ export function activate(context: vscode.ExtensionContext) {
       color: "var(--vscode-editor-foreground)",
     })
 
-  // Decoration for link text (preserves underline!)
-  const owoLinkDecorationType =
-    vscode.window.createTextEditorDecorationType({
-      opacity: "0",
-    })
-
-  function detectAllLinkRanges(
-    text: string,
-  ): Array<{ start: number; end: number }> {
-    const linkRanges: Array<{ start: number; end: number }> = []
-
-    // URLs
-    const urlRegex = /https?:\/\/[^\s\]]+|ftp:\/\/[^\s\]]+/g
-    let match
-    while ((match = urlRegex.exec(text))) {
-      linkRanges.push({
-        start: match.index,
-        end: match.index + match[0].length,
-      })
-    }
-
-    // File paths (./, ../, ~/, /path)
-    const filePathRegex =
-      /(?:^|[^\w])((?:\.\/)|\.\.\/?|~\/|\/[\w\/.-]+)/gm
-    while ((match = filePathRegex.exec(text))) {
-      const pathStart =
-        match.index + (match[1] ? match[0].indexOf(match[1]) : 0)
-      linkRanges.push({
-        start: pathStart,
-        end: pathStart + match[1].length,
-      })
-    }
-
-    // Markdown links [text](url)
-    const markdownLinkRegex = /\[([^\]]+)\]\(([^)]+)\)/g
-    while ((match = markdownLinkRegex.exec(text))) {
-      linkRanges.push({
-        start: match.index,
-        end: match.index + match[0].length,
-      })
-    }
-
-    return linkRanges
-  }
-
-  function isInLinkRange(
-    offset: number,
-    length: number,
-    linkRanges: Array<{ start: number; end: number }>,
-  ): boolean {
-    return linkRanges.some(
-      (range) =>
-        offset >= range.start && offset + length <= range.end,
-    )
-  }
-
   function updateDecorations() {
     for (const editor of vscode.window.visibleTextEditors) {
       updateDecorationsForEditor(editor)
