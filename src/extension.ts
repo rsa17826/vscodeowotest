@@ -137,17 +137,70 @@ function reg(
 
   return new RegExp(pattern, flags)
 }
-
-// This method is called when your extension is activated
-// Your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
-  // 1. Create ONE decoration type and REUSE it.
+  // Decoration for normal text (removes original, adds transformed)
   const owoDecorationType =
     vscode.window.createTextEditorDecorationType({
-      textDecoration: "none; opacity: 0 !important; visibility: hidden;", // Makes original char invisible but keeps its width
+      textDecoration:
+        "none; opacity: 0 !important; visibility: hidden;",
       color: "var(--vscode-editor-foreground)",
-      // textDecoration: 'none; display: none;',
     })
+
+  // Decoration for link text (preserves underline!)
+  const owoLinkDecorationType =
+    vscode.window.createTextEditorDecorationType({
+      opacity: "0",
+    })
+
+  function detectAllLinkRanges(
+    text: string,
+  ): Array<{ start: number; end: number }> {
+    const linkRanges: Array<{ start: number; end: number }> = []
+
+    // URLs
+    const urlRegex = /https?:\/\/[^\s\]]+|ftp:\/\/[^\s\]]+/g
+    let match
+    while ((match = urlRegex.exec(text))) {
+      linkRanges.push({
+        start: match.index,
+        end: match.index + match[0].length,
+      })
+    }
+
+    // File paths (./, ../, ~/, /path)
+    const filePathRegex =
+      /(?:^|[^\w])((?:\.\/)|\.\.\/?|~\/|\/[\w\/.-]+)/gm
+    while ((match = filePathRegex.exec(text))) {
+      const pathStart =
+        match.index + (match[1] ? match[0].indexOf(match[1]) : 0)
+      linkRanges.push({
+        start: pathStart,
+        end: pathStart + match[1].length,
+      })
+    }
+
+    // Markdown links [text](url)
+    const markdownLinkRegex = /\[([^\]]+)\]\(([^)]+)\)/g
+    while ((match = markdownLinkRegex.exec(text))) {
+      linkRanges.push({
+        start: match.index,
+        end: match.index + match[0].length,
+      })
+    }
+
+    return linkRanges
+  }
+
+  function isInLinkRange(
+    offset: number,
+    length: number,
+    linkRanges: Array<{ start: number; end: number }>,
+  ): boolean {
+    return linkRanges.some(
+      (range) =>
+        offset >= range.start && offset + length <= range.end,
+    )
+  }
 
   function updateDecorations() {
     const editor = vscode.window.activeTextEditor
@@ -156,6 +209,8 @@ export function activate(context: vscode.ExtensionContext) {
     const text = editor.document.getText()
     const wordRegex = /\b\w+\b/g
     const decorations: vscode.DecorationOptions[] = []
+    const linkDecorations: vscode.DecorationOptions[] = []
+    const linkRanges = detectAllLinkRanges(text)
 
     let match
     while ((match = wordRegex.exec(text))) {
@@ -164,27 +219,31 @@ export function activate(context: vscode.ExtensionContext) {
       const wordOffset = match.index
 
       if (transformed !== original) {
-        // Diffing logic: compare char by char
-        // Inside your while loop comparing original vs transformed:
-        // Initial pointers for original (i) and transformed (j)
+        const isLink = isInLinkRange(
+          wordOffset,
+          original.length,
+          linkRanges,
+        )
+        const targetDecorations =
+          isLink ? linkDecorations : decorations
+
+        // Diffing logic
         for (
           let i = 0, j = 0;
           i < original.length || j < transformed.length;
         ) {
           const oldChar = original[i]
           const newChar = transformed[j]
+          const startPos = editor.document.positionAt(wordOffset + i)
 
-          // 1. PERFECT MATCH: No decoration needed
+          // 1. PERFECT MATCH
           if (oldChar === newChar) {
             i++
             j++
             continue
           }
 
-          const startPos = editor.document.positionAt(wordOffset + i)
-
-          // 2. SMART REPLACE: Check if the characters before these are the same
-          // If original[i+1] matches transformed[j+1], it's a 1-to-1 swap (like l -> w)
+          // 2. SMART REPLACE
           if (
             oldChar &&
             newChar &&
@@ -193,7 +252,7 @@ export function activate(context: vscode.ExtensionContext) {
             const endPos = editor.document.positionAt(
               wordOffset + i + 1,
             )
-            decorations.push({
+            targetDecorations.push({
               range: new vscode.Range(startPos, endPos),
               renderOptions: {
                 before: {
@@ -206,11 +265,10 @@ export function activate(context: vscode.ExtensionContext) {
             i++
             j++
           }
-          // 3. SMART INSERT: If the oldChar matches the *next* newChar, we inserted something
-          // Example: null -> nyull. original[1] is 'u', transformed[2] is 'u'.
+          // 3. SMART INSERT
           else if (newChar && oldChar === transformed[j + 1]) {
-            decorations.push({
-              range: new vscode.Range(startPos, startPos), // Point range = no transparency
+            targetDecorations.push({
+              range: new vscode.Range(startPos, startPos),
               renderOptions: {
                 before: {
                   contentText: newChar,
@@ -219,25 +277,25 @@ export function activate(context: vscode.ExtensionContext) {
                 },
               },
             })
-            j++ // Move transformed pointer only
+            j++
           }
-          // 4. SMART DELETE: If newChar matches the *next* oldChar, we removed something
+          // 4. SMART DELETE
           else if (oldChar && original[i + 1] === newChar) {
             const endPos = editor.document.positionAt(
               wordOffset + i + 1,
             )
-            decorations.push({
+            targetDecorations.push({
               range: new vscode.Range(startPos, endPos),
-            }) // Just hide it
-            i++ // Move original pointer only
+            })
+            i++
           }
-          // 5. FALLBACK: If nothing matches ahead, assume 1-to-1 replacement
+          // 5. FALLBACK
           else {
             if (oldChar || newChar) {
               const endPos = editor.document.positionAt(
                 wordOffset + (oldChar ? i + 1 : i),
               )
-              decorations.push({
+              targetDecorations.push({
                 range: new vscode.Range(startPos, endPos),
                 renderOptions: {
                   before: {
@@ -257,7 +315,9 @@ export function activate(context: vscode.ExtensionContext) {
         }
       }
     }
+
     editor.setDecorations(owoDecorationType, decorations)
+    editor.setDecorations(owoLinkDecorationType, linkDecorations)
   }
 
   vscode.workspace.onDidChangeTextDocument(
@@ -271,9 +331,7 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions,
   )
 
-  // Initial call
   updateDecorations()
 }
 
-// This method is called when your extension is deactivated
 export function deactivate() {}
