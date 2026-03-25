@@ -203,9 +203,11 @@ export function activate(context: vscode.ExtensionContext) {
   }
 
   function updateDecorations() {
-    const editor = vscode.window.activeTextEditor
-    if (!editor) return
-
+    for (const editor of vscode.window.visibleTextEditors) {
+      updateDecorationsForEditor(editor)
+    }
+  }
+  function updateDecorationsForEditor(editor: vscode.TextEditor) {
     const decorations: vscode.DecorationOptions[] = []
 
     for (const range of editor.visibleRanges) {
