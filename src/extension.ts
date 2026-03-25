@@ -207,7 +207,6 @@ export function activate(context: vscode.ExtensionContext) {
     if (!editor) return
 
     const decorations: vscode.DecorationOptions[] = []
-    const linkDecorations: vscode.DecorationOptions[] = []
 
     for (const range of editor.visibleRanges) {
       const text = editor.document.getText(range)
@@ -216,7 +215,6 @@ export function activate(context: vscode.ExtensionContext) {
       const baseOffset = editor.document.offsetAt(range.start)
 
       const wordRegex = /\b\w+\b/g
-      const linkRanges = detectAllLinkRanges(text)
 
       let match
       while ((match = wordRegex.exec(text))) {
@@ -227,15 +225,6 @@ export function activate(context: vscode.ExtensionContext) {
 
         // ✅ FIX: convert to document offset
         const wordOffset = baseOffset + match.index
-
-        const isLink = isInLinkRange(
-          match.index, // still relative for link detection
-          original.length,
-          linkRanges,
-        )
-
-        const targetDecorations =
-          isLink ? linkDecorations : decorations
 
         const basePos = editor.document.positionAt(wordOffset)
         for (
@@ -263,7 +252,7 @@ export function activate(context: vscode.ExtensionContext) {
               wordOffset + i + 1,
             )
 
-            targetDecorations.push({
+            decorations.push({
               range: new vscode.Range(startPos, endPos),
               renderOptions: {
                 before: {
@@ -278,7 +267,7 @@ export function activate(context: vscode.ExtensionContext) {
             i++
             j++
           } else if (newChar && oldChar === transformed[j + 1]) {
-            targetDecorations.push({
+            decorations.push({
               range: new vscode.Range(startPos, startPos),
               renderOptions: {
                 before: {
@@ -296,7 +285,7 @@ export function activate(context: vscode.ExtensionContext) {
               wordOffset + i + 1,
             )
 
-            targetDecorations.push({
+            decorations.push({
               range: new vscode.Range(startPos, endPos),
             })
 
@@ -306,7 +295,7 @@ export function activate(context: vscode.ExtensionContext) {
               wordOffset + (oldChar ? i + 1 : i),
             )
 
-            targetDecorations.push({
+            decorations.push({
               range: new vscode.Range(startPos, endPos),
               renderOptions: {
                 before: {
@@ -328,7 +317,6 @@ export function activate(context: vscode.ExtensionContext) {
     }
 
     editor.setDecorations(owoDecorationType, decorations)
-    editor.setDecorations(owoLinkDecorationType, linkDecorations)
   }
 
   vscode.workspace.onDidChangeTextDocument(
