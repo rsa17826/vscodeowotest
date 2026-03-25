@@ -331,16 +331,9 @@ export function activate(context: vscode.ExtensionContext) {
     null,
     context.subscriptions,
   )
-  vscode.window.onDidChangeTextEditorVisibleRanges(
-    (e) => {
-      if (e.textEditor === vscode.window.activeTextEditor) {
-        updateDecorations()
-      }
-    },
-    null,
-    context.subscriptions,
-  )
-
+  vscode.window.onDidChangeTextEditorVisibleRanges((e) => {
+    updateDecorationsForEditor(e.textEditor)
+  })
   updateDecorations()
 }
 
