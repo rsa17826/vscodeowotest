@@ -2,11 +2,16 @@
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from "vscode"
 
+const owoCache = new Map<string, string>()
+
 /**
  * @param {String} inputText
  * @returns {String}
  */
-function owowify(inputText: string) {
+function owowify(inputText: string): string {
+  if (owoCache.has(inputText)) {
+    return owoCache.get(inputText)!
+  }
   const endSentencePattern = String.raw`([\w ,.!?]+)?` // endSentencePattern
   // const endSentencePattern1 = String.raw`([\w ,.?]+)?`; // endSentencePattern without "!" sign
   // const endSentencePattern2 = String.raw`([\w ,.]+)?`; // endSentencePattern without "!" and "?" sign
@@ -79,6 +84,7 @@ function owowify(inputText: string) {
       subSameCase($0 + $vowel, `pw${$vowel}`),
   )
 
+  owoCache.set(inputText, result)
   return result
 }
 
