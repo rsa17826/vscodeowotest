@@ -206,44 +206,54 @@ export function activate(context: vscode.ExtensionContext) {
     const editor = vscode.window.activeTextEditor
     if (!editor) return
 
-    const text = editor.document.getText()
-    const wordRegex = /\b\w+\b/g
     const decorations: vscode.DecorationOptions[] = []
     const linkDecorations: vscode.DecorationOptions[] = []
-    const linkRanges = detectAllLinkRanges(text)
 
-    let match
-    while ((match = wordRegex.exec(text))) {
-      const original = match[0]
-      const transformed = owowify(original)
-      const wordOffset = match.index
+    for (const range of editor.visibleRanges) {
+      const text = editor.document.getText(range)
 
-      if (transformed !== original) {
+      // ✅ KEY: base offset of this visible range
+      const baseOffset = editor.document.offsetAt(range.start)
+
+      const wordRegex = /\b\w+\b/g
+      const linkRanges = detectAllLinkRanges(text)
+
+      let match
+      while ((match = wordRegex.exec(text))) {
+        const original = match[0]
+        const transformed = owowify(original)
+
+        if (transformed === original) continue
+
+        // ✅ FIX: convert to document offset
+        const wordOffset = baseOffset + match.index
+
         const isLink = isInLinkRange(
-          wordOffset,
+          match.index, // still relative for link detection
           original.length,
           linkRanges,
         )
+
         const targetDecorations =
           isLink ? linkDecorations : decorations
 
-        // Diffing logic
+        const basePos = editor.document.positionAt(wordOffset)
         for (
           let i = 0, j = 0;
           i < original.length || j < transformed.length;
         ) {
           const oldChar = original[i]
           const newChar = transformed[j]
-          const startPos = editor.document.positionAt(wordOffset + i)
 
-          // 1. PERFECT MATCH
+          // ✅ FIX: always use document offset
+          const startPos = basePos.translate(0, i)
+
           if (oldChar === newChar) {
             i++
             j++
             continue
           }
 
-          // 2. SMART REPLACE
           if (
             oldChar &&
             newChar &&
@@ -252,63 +262,64 @@ export function activate(context: vscode.ExtensionContext) {
             const endPos = editor.document.positionAt(
               wordOffset + i + 1,
             )
+
             targetDecorations.push({
               range: new vscode.Range(startPos, endPos),
               renderOptions: {
                 before: {
                   contentText: newChar,
                   color: "inherit",
-                  textDecoration: `none; position: absolute; width: 1ch; translate: 0ch 0;`,
+                  textDecoration:
+                    "none; position: absolute; width: 1ch;",
                 },
               },
             })
+
             i++
             j++
-          }
-          // 3. SMART INSERT
-          else if (newChar && oldChar === transformed[j + 1]) {
+          } else if (newChar && oldChar === transformed[j + 1]) {
             targetDecorations.push({
               range: new vscode.Range(startPos, startPos),
               renderOptions: {
                 before: {
                   contentText: newChar,
                   color: "inherit",
-                  textDecoration: `none; position: relative; display: inline-block; width: 1ch;`,
+                  textDecoration:
+                    "none; position: relative; display: inline-block; width: 1ch;",
                 },
               },
             })
+
             j++
-          }
-          // 4. SMART DELETE
-          else if (oldChar && original[i + 1] === newChar) {
+          } else if (oldChar && original[i + 1] === newChar) {
             const endPos = editor.document.positionAt(
               wordOffset + i + 1,
             )
+
             targetDecorations.push({
               range: new vscode.Range(startPos, endPos),
             })
+
             i++
-          }
-          // 5. FALLBACK
-          else {
-            if (oldChar || newChar) {
-              const endPos = editor.document.positionAt(
-                wordOffset + (oldChar ? i + 1 : i),
-              )
-              targetDecorations.push({
-                range: new vscode.Range(startPos, endPos),
-                renderOptions: {
-                  before: {
-                    contentText: newChar || "",
-                    color: "inherit",
-                    textDecoration:
-                      oldChar ?
-                        `none; position: absolute; width: 1ch; translate: 0ch 0;`
-                      : `none; position: relative;`,
-                  },
+          } else {
+            const endPos = editor.document.positionAt(
+              wordOffset + (oldChar ? i + 1 : i),
+            )
+
+            targetDecorations.push({
+              range: new vscode.Range(startPos, endPos),
+              renderOptions: {
+                before: {
+                  contentText: newChar || "",
+                  color: "inherit",
+                  textDecoration:
+                    oldChar ?
+                      "none; position: absolute; width: 1ch;"
+                    : "none; position: relative;",
                 },
-              })
-            }
+              },
+            })
+
             if (oldChar) i++
             if (newChar) j++
           }
@@ -327,6 +338,15 @@ export function activate(context: vscode.ExtensionContext) {
   )
   vscode.window.onDidChangeActiveTextEditor(
     updateDecorations,
+    null,
+    context.subscriptions,
+  )
+  vscode.window.onDidChangeTextEditorVisibleRanges(
+    (e) => {
+      if (e.textEditor === vscode.window.activeTextEditor) {
+        updateDecorations()
+      }
+    },
     null,
     context.subscriptions,
   )
