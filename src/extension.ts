@@ -151,12 +151,40 @@ export function activate(context: vscode.ExtensionContext) {
   }
   let textReplaceApi: TextReplaceApi | undefined
   const updateRegistration = () => {
+    console.log("extensions installed")
     if (textReplaceApi) {
+      console.log("extensions FOUND")
       return
     }
     getTextReplaceApi()
-  }
+    if (!textReplaceApi) {
+      ;(async () => {
+        const ext = vscode.extensions.getExtension<TextReplaceApi>(
+          "rssaromeo.textreplace",
+        )
 
+        if (ext) {
+          // This is the magic part. It triggers the other extension to wake up
+          // and returns its exports (API) once it's ready.
+          textReplaceApi = await ext.activate()
+
+          context.subscriptions.push(
+            textReplaceApi.onDidUpdateRanges((uri) => {
+              const editor = vscode.window.visibleTextEditors.find(
+                (e) => e.document.uri.toString() === uri.toString(),
+              )
+              if (editor) updateDecorationsForEditor(editor)
+            }),
+          )
+
+          updateDecorations()
+          console.log(
+            "owoify-editor: textreplace API linked successfully.",
+          )
+        }
+      })()
+    }
+  }
   // 1. Try immediately
   updateRegistration()
 
