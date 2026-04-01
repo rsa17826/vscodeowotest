@@ -144,6 +144,19 @@ function reg(
   return new RegExp(pattern, flags)
 }
 export function activate(context: vscode.ExtensionContext) {
+  type TextReplaceApi = {
+    getDecoratedRanges(doc: vscode.TextDocument): vscode.Range[]
+  }
+  let textReplaceApi: TextReplaceApi | undefined
+  function getTextReplaceApi(): TextReplaceApi | undefined {
+    if (textReplaceApi) return textReplaceApi
+    const ext = vscode.extensions.getExtension<TextReplaceApi>(
+      "rssaromeo.textreplace",
+    )
+    if (ext?.isActive) textReplaceApi = ext.exports
+    return textReplaceApi
+  }
+
   // Decoration for normal text (removes original, adds transformed)
   const owoDecorationType =
     vscode.window.createTextEditorDecorationType({
@@ -173,12 +186,23 @@ export function activate(context: vscode.ExtensionContext) {
         const original = match[0]
         const transformed = owowify(original)
 
+        const reservedRanges =
+          getTextReplaceApi()?.getDecoratedRanges(editor.document) ??
+          []
+        
         if (transformed === original) continue
 
         // ✅ FIX: convert to document offset
         const wordOffset = baseOffset + match.index
 
         const basePos = editor.document.positionAt(wordOffset)
+        const wordRange = new vscode.Range(
+          editor.document.positionAt(wordOffset),
+          editor.document.positionAt(wordOffset + original.length),
+        )
+        if (reservedRanges.some((r) => r.intersection(wordRange)))
+          continue
+
         for (
           let i = 0, j = 0;
           i < original.length || j < transformed.length;
