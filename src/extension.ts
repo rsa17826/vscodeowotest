@@ -145,6 +145,11 @@ function reg(
 }
 
 export function activate(context: vscode.ExtensionContext) {
+  type TextReplaceApi = {
+    getDecoratedRanges(doc: vscode.TextDocument): vscode.Range[]
+    onDidUpdateRanges: vscode.Event<vscode.Uri>
+  }
+  let textReplaceApi: TextReplaceApi | undefined
   const updateRegistration = () => {
     if (textReplaceApi) {
       return
@@ -160,11 +165,6 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.extensions.onDidChange(() => updateRegistration()),
   )
-  type TextReplaceApi = {
-    getDecoratedRanges(doc: vscode.TextDocument): vscode.Range[]
-    onDidUpdateRanges: vscode.Event<vscode.Uri>
-  }
-  let textReplaceApi: TextReplaceApi | undefined
   function getTextReplaceApi(): TextReplaceApi | undefined {
     if (textReplaceApi) return textReplaceApi
     const ext = vscode.extensions.getExtension<TextReplaceApi>(
