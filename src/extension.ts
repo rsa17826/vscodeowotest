@@ -185,7 +185,7 @@ export function activate(context: vscode.ExtensionContext) {
           }
         }),
       )
-      // updateDecorations()
+      updateDecorations()
     }
     return textReplaceApi
   }
