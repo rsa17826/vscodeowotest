@@ -143,9 +143,26 @@ function reg(
 
   return new RegExp(pattern, flags)
 }
+
 export function activate(context: vscode.ExtensionContext) {
+  const updateRegistration = () => {
+    if (textReplaceApi) {
+      return
+    }
+    getTextReplaceApi()
+  }
+
+  // 1. Try immediately
+  updateRegistration()
+
+  // 2. Also listen for any extension state changes
+  // (In case textreplace is installed/activated later)
+  context.subscriptions.push(
+    vscode.extensions.onDidChange(() => updateRegistration()),
+  )
   type TextReplaceApi = {
     getDecoratedRanges(doc: vscode.TextDocument): vscode.Range[]
+    onDidUpdateRanges: vscode.Event<vscode.Uri>
   }
   let textReplaceApi: TextReplaceApi | undefined
   function getTextReplaceApi(): TextReplaceApi | undefined {
@@ -153,7 +170,23 @@ export function activate(context: vscode.ExtensionContext) {
     const ext = vscode.extensions.getExtension<TextReplaceApi>(
       "rssaromeo.textreplace",
     )
-    if (ext?.isActive) textReplaceApi = ext.exports
+    if (ext?.isActive) {
+      textReplaceApi = ext.exports
+      context.subscriptions.push(
+        textReplaceApi.onDidUpdateRanges((uri) => {
+          // Find the visible editor for this URI and force a re-decoration
+          const editor = vscode.window.visibleTextEditors.find(
+            (e) => e.document.uri.toString() === uri.toString(),
+          )
+          if (editor) {
+            // This will re-calculate owo decorations and
+            // skip the new ranges owned by textreplace
+            updateDecorationsForEditor(editor)
+          }
+        }),
+      )
+      // updateDecorations()
+    }
     return textReplaceApi
   }
 
@@ -189,7 +222,7 @@ export function activate(context: vscode.ExtensionContext) {
         const reservedRanges =
           getTextReplaceApi()?.getDecoratedRanges(editor.document) ??
           []
-        
+
         if (transformed === original) continue
 
         // ✅ FIX: convert to document offset
