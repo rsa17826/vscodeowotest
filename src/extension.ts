@@ -233,125 +233,124 @@ export function activate(context: vscode.ExtensionContext) {
   }
   function updateDecorationsForEditor(editor: vscode.TextEditor) {
     const decorations: vscode.DecorationOptions[] = []
+    // for (const range of editor.visibleRanges) {
+    //   const text = editor.document.getText(range)
+    const text = editor.document.getText()
+    const baseOffset = 0
+    // ✅ KEY: base offset of this visible range
+    // const baseOffset = editor.document.offsetAt(range.start)
 
-    for (const range of editor.visibleRanges) {
-      const text = editor.document.getText(range)
+    const wordRegex = /\b\w+\b/g
 
-      // ✅ KEY: base offset of this visible range
-      const baseOffset = editor.document.offsetAt(range.start)
+    let match
+    while ((match = wordRegex.exec(text))) {
+      const original = match[0]
+      const transformed = owowify(original)
 
-      const wordRegex = /\b\w+\b/g
+      const reservedRanges =
+        getTextReplaceApi()?.getDecoratedRanges(editor.document) ?? []
 
-      let match
-      while ((match = wordRegex.exec(text))) {
-        const original = match[0]
-        const transformed = owowify(original)
+      if (transformed === original) continue
 
-        const reservedRanges =
-          getTextReplaceApi()?.getDecoratedRanges(editor.document) ??
-          []
+      // ✅ FIX: convert to document offset
+      const wordOffset = baseOffset + match.index
 
-        if (transformed === original) continue
+      const basePos = editor.document.positionAt(wordOffset)
+      const wordRange = new vscode.Range(
+        editor.document.positionAt(wordOffset),
+        editor.document.positionAt(wordOffset + original.length),
+      )
+      if (reservedRanges.some((r) => r.intersection(wordRange)))
+        continue
 
-        // ✅ FIX: convert to document offset
-        const wordOffset = baseOffset + match.index
+      for (
+        let i = 0, j = 0;
+        i < original.length || j < transformed.length;
+      ) {
+        const oldChar = original[i]
+        const newChar = transformed[j]
 
-        const basePos = editor.document.positionAt(wordOffset)
-        const wordRange = new vscode.Range(
-          editor.document.positionAt(wordOffset),
-          editor.document.positionAt(wordOffset + original.length),
-        )
-        if (reservedRanges.some((r) => r.intersection(wordRange)))
+        // ✅ FIX: always use document offset
+        const startPos = basePos.translate(0, i)
+
+        if (oldChar === newChar) {
+          i++
+          j++
           continue
+        }
 
-        for (
-          let i = 0, j = 0;
-          i < original.length || j < transformed.length;
+        if (
+          oldChar &&
+          newChar &&
+          original[i + 1] === transformed[j + 1]
         ) {
-          const oldChar = original[i]
-          const newChar = transformed[j]
+          const endPos = editor.document.positionAt(
+            wordOffset + i + 1,
+          )
 
-          // ✅ FIX: always use document offset
-          const startPos = basePos.translate(0, i)
-
-          if (oldChar === newChar) {
-            i++
-            j++
-            continue
-          }
-
-          if (
-            oldChar &&
-            newChar &&
-            original[i + 1] === transformed[j + 1]
-          ) {
-            const endPos = editor.document.positionAt(
-              wordOffset + i + 1,
-            )
-
-            decorations.push({
-              range: new vscode.Range(startPos, endPos),
-              renderOptions: {
-                before: {
-                  contentText: newChar,
-                  color: "inherit",
-                  textDecoration:
-                    "none; position: absolute; width: 1ch;",
-                },
+          decorations.push({
+            range: new vscode.Range(startPos, endPos),
+            renderOptions: {
+              before: {
+                contentText: newChar,
+                color: "inherit",
+                textDecoration:
+                  "none; position: absolute; width: 1ch;",
               },
-            })
+            },
+          })
 
-            i++
-            j++
-          } else if (newChar && oldChar === transformed[j + 1]) {
-            decorations.push({
-              range: new vscode.Range(startPos, startPos),
-              renderOptions: {
-                before: {
-                  contentText: newChar,
-                  color: "inherit",
-                  textDecoration:
-                    "none; position: relative; display: inline-block; width: 1ch;",
-                },
+          i++
+          j++
+        } else if (newChar && oldChar === transformed[j + 1]) {
+          decorations.push({
+            range: new vscode.Range(startPos, startPos),
+            renderOptions: {
+              before: {
+                contentText: newChar,
+                color: "inherit",
+                textDecoration:
+                  "none; position: relative; display: inline-block; width: 1ch;",
               },
-            })
+            },
+          })
 
-            j++
-          } else if (oldChar && original[i + 1] === newChar) {
-            const endPos = editor.document.positionAt(
-              wordOffset + i + 1,
-            )
+          j++
+        } else if (oldChar && original[i + 1] === newChar) {
+          const endPos = editor.document.positionAt(
+            wordOffset + i + 1,
+          )
 
-            decorations.push({
-              range: new vscode.Range(startPos, endPos),
-            })
+          decorations.push({
+            range: new vscode.Range(startPos, endPos),
+          })
 
-            i++
-          } else {
-            const endPos = editor.document.positionAt(
-              wordOffset + (oldChar ? i + 1 : i),
-            )
+          i++
+        } else {
+          const endPos = editor.document.positionAt(
+            wordOffset + (oldChar ? i + 1 : i),
+          )
 
-            decorations.push({
-              range: new vscode.Range(startPos, endPos),
-              renderOptions: {
-                before: {
-                  contentText: newChar || "",
-                  color: "inherit",
-                  textDecoration:
-                    oldChar ?
-                      "none; position: absolute; width: 1ch;"
-                    : "none; position: relative;",
-                },
+          decorations.push({
+            range: new vscode.Range(startPos, endPos),
+            renderOptions: {
+              before: {
+                contentText: newChar || "",
+                color: "inherit",
+                textDecoration:
+                  oldChar ?
+                    "none; position: absolute; width: 1ch;"
+                  : "none; position: relative;",
               },
-            })
+            },
+          })
 
-            if (oldChar) i++
-            if (newChar) j++
-          }
+          if (oldChar) i++
+          if (newChar) j++
         }
       }
     }
+    // }
 
     editor.setDecorations(owoDecorationType, decorations)
   }
