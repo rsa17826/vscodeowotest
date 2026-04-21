@@ -2,7 +2,7 @@
   "name": "owoify-editor",
   "displayName": "owoify editor",
   "description": "",
-  "version": "7.0.0",
+  "version": "8.0.0",
   "engines": {
     "vscode": "^1.109.0"
   },
