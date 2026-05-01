@@ -2,7 +2,7 @@
   "name": "owoify-editor",
   "displayName": "owoify editor",
   "description": "",
-  "version": "8.0.0",
+  "version": "99.0.0",
   "engines": {
     "vscode": "^1.109.0"
   },
@@ -13,6 +13,34 @@
     "onStartupFinished"
   ],
   "main": "./out/extension.js",
+  "contributes": {
+    "configuration": [
+      {
+        "title": "",
+        "properties": {
+          "owoify-editor.onlyVisibleRanges": {
+            "type": "boolean",
+            "default": false,
+            "description": "Only apply OwO decorations to the visible portion of the editor."
+          },
+          "owoify-editor.onlyVisibleRangesThreshold": {
+            "type": "number",
+            "default": 0,
+            "description": "Use visible-ranges-only mode when the document exceeds this size (0 = disabled). Unit is controlled by onlyVisibleRangesThresholdUnit."
+          },
+          "owoify-editor.onlyVisibleRangesThresholdUnit": {
+            "type": "string",
+            "enum": [
+              "lines",
+              "characters"
+            ],
+            "default": "lines",
+            "description": "Whether the threshold is measured in lines or characters."
+          }
+        }
+      }
+    ]
+  },
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
