@@ -144,6 +144,13 @@ function reg(
   return new RegExp(pattern, flags)
 }
 
+// Decoration for normal text (removes original, adds transformed)
+const owoDecorationType =
+  vscode.window.createTextEditorDecorationType({
+    textDecoration:
+      "none; opacity: 0 !important; visibility: hidden;",
+    color: "var(--vscode-editor-foreground)",
+  })
 export function activate(context: vscode.ExtensionContext) {
   type TextReplaceApi = {
     getDecoratedRanges(doc: vscode.TextDocument): vscode.Range[]
@@ -218,13 +225,47 @@ export function activate(context: vscode.ExtensionContext) {
     return textReplaceApi
   }
 
-  // Decoration for normal text (removes original, adds transformed)
-  const owoDecorationType =
-    vscode.window.createTextEditorDecorationType({
-      textDecoration:
-        "none; opacity: 0 !important; visibility: hidden;",
-      color: "var(--vscode-editor-foreground)",
-    })
+  /**
+   * Returns true when decorations should be restricted to the editor's
+   * currently-visible ranges based on the two user-configurable settings:
+   *
+   *  • owoify-editor.onlyVisibleRanges          – always use visible ranges
+   *  • owoify-editor.onlyVisibleRangesThreshold – use visible ranges when the
+   *    document exceeds N lines or characters (0 = disabled)
+   *  • owoify-editor.onlyVisibleRangesThresholdUnit – "lines" | "characters"
+   */
+  function shouldUseVisibleRanges(
+    editor: vscode.TextEditor,
+  ): boolean {
+    const config = vscode.workspace.getConfiguration("owoify-editor")
+
+    if (config.get<boolean>("onlyVisibleRanges") === true) {
+      return true
+    }
+
+    const threshold = config.get<number>(
+      "onlyVisibleRangesThreshold",
+      0,
+    )
+    if (threshold > 0) {
+      const unit = config.get<string>(
+        "onlyVisibleRangesThresholdUnit",
+        "lines",
+      )
+      const doc = editor.document
+      if (unit === "characters") {
+        // getText() is called once here only for the threshold check;
+        // the result is NOT stored so the garbage collector can reclaim it
+        // immediately. The heavy decoration loop below still operates only
+        // on visible ranges when this branch returns true.
+        return doc.getText().length > threshold
+      }
+      // default: "lines"
+      return doc.lineCount > threshold
+    }
+
+    return false
+  }
 
   function updateDecorations() {
     for (const editor of vscode.window.visibleTextEditors) {
@@ -233,124 +274,139 @@ export function activate(context: vscode.ExtensionContext) {
   }
   function updateDecorationsForEditor(editor: vscode.TextEditor) {
     const decorations: vscode.DecorationOptions[] = []
-    // for (const range of editor.visibleRanges) {
-    //   const text = editor.document.getText(range)
-    const text = editor.document.getText()
-    const baseOffset = 0
-    // ✅ KEY: base offset of this visible range
-    // const baseOffset = editor.document.offsetAt(range.start)
 
-    const wordRegex = /\b\w+\b/g
+    // Determine which ranges to scan. When useVisibleRanges is true we only
+    // process the lines the user can currently see; otherwise we fall back to
+    // a synthetic range that covers the whole document.
+    const useVisibleRanges = shouldUseVisibleRanges(editor)
+    const scanRanges: readonly vscode.Range[] =
+      useVisibleRanges ?
+        editor.visibleRanges
+      : [
+          new vscode.Range(
+            new vscode.Position(0, 0),
+            editor.document.lineAt(editor.document.lineCount - 1)
+              .range.end,
+          ),
+        ]
 
-    let match
-    while ((match = wordRegex.exec(text))) {
-      const original = match[0]
-      const transformed = owowify(original)
+    for (const range of scanRanges) {
+      const text = editor.document.getText(range)
+      // ✅ KEY: base offset of this scan range
+      const baseOffset = editor.document.offsetAt(range.start)
 
-      const reservedRanges =
-        getTextReplaceApi()?.getDecoratedRanges(editor.document) ?? []
+      const wordRegex = /\b\w+\b/g
 
-      if (transformed === original) continue
+      let match
+      while ((match = wordRegex.exec(text))) {
+        const original = match[0]
+        const transformed = owowify(original)
 
-      // ✅ FIX: convert to document offset
-      const wordOffset = baseOffset + match.index
+        const reservedRanges =
+          getTextReplaceApi()?.getDecoratedRanges(editor.document) ??
+          []
 
-      const basePos = editor.document.positionAt(wordOffset)
-      const wordRange = new vscode.Range(
-        editor.document.positionAt(wordOffset),
-        editor.document.positionAt(wordOffset + original.length),
-      )
-      if (reservedRanges.some((r) => r.intersection(wordRange)))
-        continue
+        if (transformed === original) continue
 
-      for (
-        let i = 0, j = 0;
-        i < original.length || j < transformed.length;
-      ) {
-        const oldChar = original[i]
-        const newChar = transformed[j]
+        // ✅ FIX: convert to document offset
+        const wordOffset = baseOffset + match.index
 
-        // ✅ FIX: always use document offset
-        const startPos = basePos.translate(0, i)
-
-        if (oldChar === newChar) {
-          i++
-          j++
+        const basePos = editor.document.positionAt(wordOffset)
+        const wordRange = new vscode.Range(
+          editor.document.positionAt(wordOffset),
+          editor.document.positionAt(wordOffset + original.length),
+        )
+        if (reservedRanges.some((r) => r.intersection(wordRange)))
           continue
-        }
 
-        if (
-          oldChar &&
-          newChar &&
-          original[i + 1] === transformed[j + 1]
+        for (
+          let i = 0, j = 0;
+          i < original.length || j < transformed.length;
         ) {
-          const endPos = editor.document.positionAt(
-            wordOffset + i + 1,
-          )
+          const oldChar = original[i]
+          const newChar = transformed[j]
 
-          decorations.push({
-            range: new vscode.Range(startPos, endPos),
-            renderOptions: {
-              before: {
-                contentText: newChar,
-                color: "inherit",
-                textDecoration:
-                  "none; position: absolute; width: 1ch;",
+          // ✅ FIX: always use document offset
+          const startPos = basePos.translate(0, i)
+
+          if (oldChar === newChar) {
+            i++
+            j++
+            continue
+          }
+
+          if (
+            oldChar &&
+            newChar &&
+            original[i + 1] === transformed[j + 1]
+          ) {
+            const endPos = editor.document.positionAt(
+              wordOffset + i + 1,
+            )
+
+            decorations.push({
+              range: new vscode.Range(startPos, endPos),
+              renderOptions: {
+                before: {
+                  contentText: newChar,
+                  color: "inherit",
+                  textDecoration:
+                    "none; position: absolute; width: 1ch;",
+                },
               },
-            },
-          })
+            })
 
-          i++
-          j++
-        } else if (newChar && oldChar === transformed[j + 1]) {
-          decorations.push({
-            range: new vscode.Range(startPos, startPos),
-            renderOptions: {
-              before: {
-                contentText: newChar,
-                color: "inherit",
-                textDecoration:
-                  "none; position: relative; display: inline-block; width: 1ch;",
+            i++
+            j++
+          } else if (newChar && oldChar === transformed[j + 1]) {
+            decorations.push({
+              range: new vscode.Range(startPos, startPos),
+              renderOptions: {
+                before: {
+                  contentText: newChar,
+                  color: "inherit",
+                  textDecoration:
+                    "none; position: relative; display: inline-block; width: 1ch;",
+                },
               },
-            },
-          })
+            })
 
-          j++
-        } else if (oldChar && original[i + 1] === newChar) {
-          const endPos = editor.document.positionAt(
-            wordOffset + i + 1,
-          )
+            j++
+          } else if (oldChar && original[i + 1] === newChar) {
+            const endPos = editor.document.positionAt(
+              wordOffset + i + 1,
+            )
 
-          decorations.push({
-            range: new vscode.Range(startPos, endPos),
-          })
+            decorations.push({
+              range: new vscode.Range(startPos, endPos),
+            })
 
-          i++
-        } else {
-          const endPos = editor.document.positionAt(
-            wordOffset + (oldChar ? i + 1 : i),
-          )
+            i++
+          } else {
+            const endPos = editor.document.positionAt(
+              wordOffset + (oldChar ? i + 1 : i),
+            )
 
-          decorations.push({
-            range: new vscode.Range(startPos, endPos),
-            renderOptions: {
-              before: {
-                contentText: newChar || "",
-                color: "inherit",
-                textDecoration:
-                  oldChar ?
-                    "none; position: absolute; width: 1ch;"
-                  : "none; position: relative;",
+            decorations.push({
+              range: new vscode.Range(startPos, endPos),
+              renderOptions: {
+                before: {
+                  contentText: newChar || "",
+                  color: "inherit",
+                  textDecoration:
+                    oldChar ?
+                      "none; position: absolute; width: 1ch;"
+                    : "none; position: relative;",
+                },
               },
-            },
-          })
+            })
 
-          if (oldChar) i++
-          if (newChar) j++
+            if (oldChar) i++
+            if (newChar) j++
+          }
         }
       }
-    }
-    // }
+    } // end for (const range of scanRanges)
 
     editor.setDecorations(owoDecorationType, decorations)
   }
