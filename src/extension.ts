@@ -148,7 +148,7 @@ function reg(
 const owoDecorationType =
   vscode.window.createTextEditorDecorationType({
     textDecoration:
-      "none; opacity: 0 !important; visibility: hidden;",
+      "inherit; opacity: 0 !important; visibility: hidden;",
     color: "var(--vscode-editor-foreground)",
   })
 export function activate(context: vscode.ExtensionContext) {
@@ -229,10 +229,10 @@ export function activate(context: vscode.ExtensionContext) {
    * Returns true when decorations should be restricted to the editor's
    * currently-visible ranges based on the two user-configurable settings:
    *
-   *  • owoify-editor.onlyVisibleRanges          – always use visible ranges
-   *  • owoify-editor.onlyVisibleRangesThreshold – use visible ranges when the
+   *  • owoify-editor.onlyVisibleRanges          - always use visible ranges
+   *  • owoify-editor.onlyVisibleRangesThreshold - use visible ranges when the
    *    document exceeds N lines or characters (0 = disabled)
-   *  • owoify-editor.onlyVisibleRangesThresholdUnit – "lines" | "characters"
+   *  • owoify-editor.onlyVisibleRangesThresholdUnit - "lines" | "characters"
    */
   function shouldUseVisibleRanges(
     editor: vscode.TextEditor,
@@ -351,7 +351,7 @@ export function activate(context: vscode.ExtensionContext) {
                   contentText: newChar,
                   color: "inherit",
                   textDecoration:
-                    "none; position: absolute; width: 1ch;",
+                    "inherit; position: absolute; width: 1ch;",
                 },
               },
             })
@@ -366,7 +366,7 @@ export function activate(context: vscode.ExtensionContext) {
                   contentText: newChar,
                   color: "inherit",
                   textDecoration:
-                    "none; position: relative; display: inline-block; width: 1ch;",
+                    "inherit; position: relative; display: inline-block; width: 1ch;",
                 },
               },
             })
@@ -395,8 +395,8 @@ export function activate(context: vscode.ExtensionContext) {
                   color: "inherit",
                   textDecoration:
                     oldChar ?
-                      "none; position: absolute; width: 1ch;"
-                    : "none; position: relative;",
+                      "inherit; position: absolute; width: 1ch;"
+                    : "inherit; position: relative;",
                 },
               },
             })
