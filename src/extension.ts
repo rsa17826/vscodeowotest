@@ -267,6 +267,80 @@ export function activate(context: vscode.ExtensionContext) {
     return false
   }
 
+  // Lines longer than this are treated as "long lines": instead of scanning
+  // the whole line (or the whole visible-range span of the line), we only
+  // scan the portion of the line that's currently visible, padded by
+  // LONG_LINE_PADDING characters on each side so words straddling the
+  // visible edge still get fully matched/replaced.
+  const LONG_LINE_LENGTH_THRESHOLD = 400
+  const LONG_LINE_PADDING = 10
+
+  /**
+   * Builds the set of ranges to scan for owo-ification. Normal lines follow
+   * the existing useVisibleRanges/threshold behavior. Any individual line
+   * whose length exceeds LONG_LINE_LENGTH_THRESHOLD is always restricted to
+   * its currently-visible horizontal window (±LONG_LINE_PADDING chars),
+   * regardless of the other visible-range settings, and is skipped entirely
+   * if it isn't visible at all.
+   */
+  function getScanRanges(
+    editor: vscode.TextEditor,
+    useVisibleRanges: boolean,
+  ): vscode.Range[] {
+    const doc = editor.document
+    const visibleRanges = editor.visibleRanges
+    const ranges: vscode.Range[] = []
+
+    const linesToProcess = new Set<number>()
+    if (useVisibleRanges) {
+      for (const vr of visibleRanges) {
+        for (let l = vr.start.line; l <= vr.end.line; l++) {
+          linesToProcess.add(l)
+        }
+      }
+    } else {
+      for (let l = 0; l < doc.lineCount; l++) linesToProcess.add(l)
+    }
+
+    const sortedLines = Array.from(linesToProcess).sort(
+      (a, b) => a - b,
+    )
+
+    for (const lineNum of sortedLines) {
+      const line = doc.lineAt(lineNum)
+      const lineLength = line.text.length
+
+      if (lineLength > LONG_LINE_LENGTH_THRESHOLD) {
+        // Only ever scan the visible window (+padding) of a long line,
+        // even if we'd otherwise be scanning the whole document.
+        const vr = visibleRanges.find(
+          (v) => lineNum >= v.start.line && lineNum <= v.end.line,
+        )
+        if (!vr) continue // long line isn't visible at all; skip it
+
+        const startChar =
+          lineNum === vr.start.line ?
+            Math.max(0, vr.start.character - LONG_LINE_PADDING)
+          : 0
+        const endChar =
+          lineNum === vr.end.line ?
+            Math.min(lineLength, vr.end.character + LONG_LINE_PADDING)
+          : lineLength
+
+        ranges.push(
+          new vscode.Range(
+            new vscode.Position(lineNum, startChar),
+            new vscode.Position(lineNum, endChar),
+          ),
+        )
+      } else {
+        ranges.push(line.range)
+      }
+    }
+
+    return ranges
+  }
+
   function updateDecorations() {
     for (const editor of vscode.window.visibleTextEditors) {
       updateDecorationsForEditor(editor)
@@ -277,18 +351,14 @@ export function activate(context: vscode.ExtensionContext) {
 
     // Determine which ranges to scan. When useVisibleRanges is true we only
     // process the lines the user can currently see; otherwise we fall back to
-    // a synthetic range that covers the whole document.
+    // scanning the whole document, except that any individual line over
+    // LONG_LINE_LENGTH_THRESHOLD chars is always clipped to its visible
+    // window (see getScanRanges).
     const useVisibleRanges = shouldUseVisibleRanges(editor)
-    const scanRanges: readonly vscode.Range[] =
-      useVisibleRanges ?
-        editor.visibleRanges
-      : [
-          new vscode.Range(
-            new vscode.Position(0, 0),
-            editor.document.lineAt(editor.document.lineCount - 1)
-              .range.end,
-          ),
-        ]
+    const scanRanges: readonly vscode.Range[] = getScanRanges(
+      editor,
+      useVisibleRanges,
+    )
 
     for (const range of scanRanges) {
       const text = editor.document.getText(range)
